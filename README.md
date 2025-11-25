@@ -240,10 +240,12 @@ python 天国拯救2_双语_v1.py
 
 ```mermaid
 stateDiagram-v2
+    state if_test_mode <<choice>>
+    state xml_parse <<choice>>
+    state check_next_row <<choice>>
     [*] --> 读取配置文件
     读取配置文件 --> 选择模式
 
-    state if_test_mode <<choice>>
     选择模式 --> if_test_mode: 是否测试模式
     if_test_mode --> 测试数据: 是
     if_test_mode --> 文件模式: 否
@@ -253,7 +255,6 @@ stateDiagram-v2
     检查文件存在 --> 解析实际XML文件: 文件存在
     检查文件存在 --> 创建示例文件: 文件不存在
 
-    state xml_parse <<choice>>
     解析硬编码XML --> xml_parse
     解析实际XML文件 --> xml_parse
     创建示例文件 --> xml_parse
@@ -262,25 +263,16 @@ stateDiagram-v2
     提取单元格 --> 分割中文和英文部分
     分割中文和英文部分 --> 调用OllamaAPI
 
-    调用OllamaAPI --> wait
-    wait --> receive_response: 接收精校后文本
-    receive_response --> 组合新Cell内容
+    调用OllamaAPI --> 等待AI精校响应: 发送请求等待响应
+    等待AI精校响应 --> 接收精校后文本: 接收精校后文本
+    接收精校后文本 --> 组合新Cell内容
 
-    组合新Cell内容 --> check_next_row: 是否还有行待处理?
-    check_next_row --> yes: 提取单元格
-    yes --> 分割中文和英文部分
-    check_next_row --> no --> 保存文件
+    组合新Cell内容 --> check_next_row
+    check_next_row --> 提取单元格: 有行待处理
+    check_next_row --> 保存文件: 无行待处理
 
     保存文件 --> 输出完成信息
     输出完成信息 --> [*]
-
-    state wait as "调用AI精校后等待"
-
-    note right of AI精校 : AI精校的具体流程
-    AI精校 --> Prompt构造
-    Prompt构造 --> 发送请求
-    发送请求 --> 接收响应
-    接收响应 --> 返回精校文本
 ```
 
 #### 使用步骤
