@@ -1,13 +1,13 @@
+import os  # 导入 os 库，方便文件操作
 import xml.etree.ElementTree as ET
+
 import requests
-import json
-import os # 导入 os 库，方便文件操作
 
 # --- 配置 ---
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "qwen3:latest"  # 替换为你想要使用的Ollama模型
-XML_FILE_PATH = 'game_localization.xml'
-OUTPUT_FILE_PATH = 'game_localization_refined.xml'
+XML_FILE_PATH = "game_localization.xml"
+OUTPUT_FILE_PATH = "game_localization_refined.xml"
 
 # **【核心切换参数】**
 # 设置为 True 时：运行测试用例，使用硬编码数据，输出文件名为 'test_output.xml'
@@ -33,6 +33,7 @@ TEST_XML_CONTENT = """
 </Table>
 """
 
+
 def create_ollama_prompt(original_chinese_translation, original_english_text):
     """
     构造用于精校翻译的Prompt。
@@ -57,6 +58,7 @@ def create_ollama_prompt(original_chinese_translation, original_english_text):
 """
     return prompt
 
+
 def refine_translation(chinese_text, english_text):
     """
     调用Ollama API进行翻译精校。
@@ -69,24 +71,25 @@ def refine_translation(chinese_text, english_text):
         "stream": False,
         "options": {
             "temperature": 0.1,
-        }
+        },
     }
 
     try:
         response = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
-        response.raise_for_status() # 检查HTTP错误
+        response.raise_for_status()  # 检查HTTP错误
 
         result = response.json()
-        refined_text = result.get('response', '').strip()
+        refined_text = result.get("response", "").strip()
         return refined_text
 
     except requests.exceptions.RequestException as e:
         print(f"Ollama API调用失败: {e}")
         # **【测试/错误处理差异】** # 测试模式下，为了验证流程，可以返回一个特殊标记；实际模式下，最好返回原文。
         if IS_TEST_MODE:
-             return f"[TEST_ERROR] {chinese_text}"
+            return f"[TEST_ERROR] {chinese_text}"
         else:
-             return chinese_text # 实际处理时，失败了就保留原文，避免丢失数据
+            return chinese_text  # 实际处理时，失败了就保留原文，避免丢失数据
+
 
 def process_localization_file(is_test_mode):
     """
@@ -97,12 +100,12 @@ def process_localization_file(is_test_mode):
         # 从硬编码字符串加载数据
         root = ET.fromstring(TEST_XML_CONTENT)
         input_name = "硬编码测试数据"
-        output_name = 'test_output.xml'
+        output_name = "test_output.xml"
     else:
         print("--- 运行模式：实际文件模式 ---")
         input_name = XML_FILE_PATH
         output_name = OUTPUT_FILE_PATH
-        
+
         try:
             # 从实际文件加载数据
             tree = ET.parse(XML_FILE_PATH)
@@ -114,28 +117,27 @@ def process_localization_file(is_test_mode):
             print(f"错误：XML解析失败：{e}")
             return
 
-
     print(f"开始处理 {len(root)} 行数据 (数据源: {input_name})...")
 
     # 遍历每一个 <Row> 元素
-    for i, row in enumerate(root.findall('Row')):
-        cells = row.findall('Cell')
+    for i, row in enumerate(root.findall("Row")):
+        cells = row.findall("Cell")
 
         if len(cells) < 3:
             continue
 
         # 提取第三个单元格的内容
         combined_text = cells[2].text
-        if not combined_text or '\n' not in combined_text:
-            print(f"警告：第 {i+1} 行跳过格式不正确的行。")
+        if not combined_text or "\n" not in combined_text:
+            print(f"警告：第 {i + 1} 行跳过格式不正确的行。")
             continue
 
         # 使用 \n 分割，获取中文翻译和英文原文
-        parts = combined_text.split('\n', 1)
+        parts = combined_text.split("\n", 1)
         original_chinese = parts[0].strip()
         original_english = parts[1].strip()
 
-        print(f"\n--- 正在处理第 {i+1} 行 ---")
+        print(f"\n--- 正在处理第 {i + 1} 行 ---")
         print(f"英文: {original_english}")
         print(f"原中文: {original_chinese}")
 
@@ -152,16 +154,17 @@ def process_localization_file(is_test_mode):
     if is_test_mode:
         # 测试模式下，创建一个新的ElementTree来保存结果
         new_tree = ET.ElementTree(root)
-        new_tree.write(output_name, encoding='utf-8', xml_declaration=True)
+        new_tree.write(output_name, encoding="utf-8", xml_declaration=True)
     else:
         # 实际文件模式下，使用原始的 tree 对象（如果成功解析的话）
         # 注意：这里需要确保 tree 变量在非测试模式下是存在的
         # 简单的做法是重新构造 tree
         tree = ET.ElementTree(root)
-        tree.write(output_name, encoding='utf-8', xml_declaration=True)
-    
-    print(f"\n--- 任务完成 ---")
+        tree.write(output_name, encoding="utf-8", xml_declaration=True)
+
+    print("\n--- 任务完成 ---")
     print(f"结果已保存至：{output_name}")
+
 
 # --- 主程序入口 ---
 if __name__ == "__main__":
@@ -178,7 +181,7 @@ if __name__ == "__main__":
 <Row><Cell>achy_alchymist_aspon_zije_UWNH</Cell><Cell>At least we're alive… I reckon that'll do for today.</Cell><Cell>至少我们还活着…我想今天就这样吧。 \n At least we're alive… I reckon that'll do for today.</Cell></Row>
 </LocalizationData>
 """
-        with open(XML_FILE_PATH, 'w', encoding='utf-8') as f:
+        with open(XML_FILE_PATH, "w", encoding="utf-8") as f:
             f.write(temp_xml_content_full)
 
     process_localization_file(IS_TEST_MODE)
