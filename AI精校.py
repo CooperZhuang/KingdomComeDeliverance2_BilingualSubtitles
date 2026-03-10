@@ -1,187 +1,170 @@
-import os  # 导入 os 库，方便文件操作
+import argparse
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import requests
 
-# --- 配置 ---
+from localize_core import split_bilingual_text
+
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen3:latest"  # 替换为你想要使用的Ollama模型
-XML_FILE_PATH = "game_localization.xml"
-OUTPUT_FILE_PATH = "game_localization_refined.xml"
+DEFAULT_MODEL = "qwen3:latest"
 
-# **【核心切换参数】**
-# 设置为 True 时：运行测试用例，使用硬编码数据，输出文件名为 'test_output.xml'
-# 设置为 False 时：运行实际文件，读取 XML_FILE_PATH，输出文件名为 OUTPUT_FILE_PATH
-IS_TEST_MODE = True
-# ----------------
-
-# 准备测试数据（XML格式的字符串）
 TEST_XML_CONTENT = """
 <Table>
-<Row><Cell>achy_alchymist_a_je_to_a__n6s0</Cell><Cell>That's that! That was hard work!</Cell><Cell>就这样了！刚才真是场硬仗！ \n That's that! That was hard work!</Cell></Row>
+<Row><Cell>achy_alchymist_a_je_to_a__n6s0</Cell><Cell>That's that! That was hard work!</Cell><Cell>就这样了！刚才真是场硬仗！ \\n That's that! That was hard work!</Cell></Row>
 <Row><Cell>achy_alchymist_ale_jestli_XdGm</Cell><Cell>But if I ever run into that youngster again…</Cell><Cell>但如果再让我碰到那个年轻人… \n But if I ever run into that youngster again…</Cell></Row>
-<Row><Cell>achy_alchymist_aspon_zije_UWNH</Cell><Cell>At least we're alive… I reckon that'll do for today.</Cell><Cell>至少我们还活着…我想今天就这样吧。 \n At least we're alive… I reckon that'll do for today.</Cell></Row>
-<Row><Cell>achy_alchymist_haha_y9CT</Cell><Cell>Haha!</Cell><Cell>哈哈！ \n Haha!</Cell></Row>
-<Row><Cell>achy_alchymist_mel_vrazdu_LaNq</Cell><Cell>He had murder in his eyes…</Cell><Cell>他眼中充满杀意… \n He had murder in his eyes…</Cell></Row>
-<Row><Cell>achy_alchymist_tak_tohle__d1im</Cell><Cell>That was a close one.</Cell><Cell>刚才可真是好险哪。 \n That was a close one.</Cell></Row>
-<Row><Cell>achy_alchymist_ten_kluk_b_HUao</Cell><Cell>That lad must've been mad.</Cell><Cell>那个小伙子一定是疯了。 \n That lad must've been mad.</Cell></Row>
-<Row><Cell>achy_alchymist_to_by_nas__wqi5</Cell><Cell>Those bones would have cost us dearly.</Cell><Cell>那些骨头差点让我们付出巨大的代价。 \n Those bones would have cost us dearly.</Cell></Row>
-<Row><Cell>achy_alchymist_uff_RCen</Cell><Cell>Phew...</Cell><Cell>吁… \n Phew...</Cell></Row>
-<Row><Cell>achy_alchymist_uff_VI2a</Cell><Cell>Oof…</Cell><Cell>哎哟… \n Oof…</Cell></Row>
-<Row><Cell>a_co_henry_a_co_dal_hanse_YOgx</Cell><Cell>What next? I found Janosh, but where the fuck is Adder?</Cell><Cell>然后呢？我找到了亚诺什，但阿德尔他妈的在哪？ \n What next? I found Janosh, but where the fuck is Adder?</Cell></Row>
-<Row><Cell>a_co_henry_a_co_ted_porad_abfK</Cell><Cell>What now? I still don't know where Janosh is.</Cell><Cell>现在怎么办？我还是不知道亚诺什在哪里。 \n What now? I still don't know where Janosh is.</Cell></Row>
 </Table>
 """
 
 
-def create_ollama_prompt(original_chinese_translation, original_english_text):
-    """
-    构造用于精校翻译的Prompt。
-    """
-    prompt = f"""
-你是一位专业的游戏本地化翻译专家。你的任务是根据提供的英文原文，**精校**以下中文翻译，使其在游戏场景中更加地道、自然和精准。
+def create_ollama_prompt(
+    original_chinese_translation: str, original_english_text: str
+) -> str:
+    return f"""
+你是一位专业的游戏本地化翻译专家。你的任务是根据提供的英文原文，精校以下中文翻译，使其在游戏场景中更加地道、自然和精准。
 
-**英文原文：**
+英文原文：
 "{original_english_text}"
 
-**当前中文翻译：**
+当前中文翻译：
 "{original_chinese_translation}"
 
-**请注意：**
-1. 你的回答必须**仅包含**精校后的中文文本，不要添加任何说明、解释或额外标点（例如：不要说“精校后的中文是：”）。
-2. 务必完整保留原文中的专有名词、人名、地名、技能名、物品名等，不要随意改动或替换。
-3. 在保证忠实原意的前提下，使译文符合中文玩家的语言习惯，读起来自然流畅，避免生硬直译。
-4. 保持原文的语气、情感和风格（如紧张、幽默、史诗感等），确保符合游戏场景氛围。
-5. 尽可能口语化，不要书面化用于。
+请注意：
+1. 你的回答必须仅包含精校后的中文文本，不要添加任何说明或解释。
+2. 务必保留专有名词、人名、地名、技能名、物品名。
+3. 在忠实原意的前提下，使译文符合中文玩家语言习惯，读起来自然流畅。
+4. 保持原文语气、情感和风格，确保符合游戏场景。
+5. 尽可能口语化，避免生硬直译。
 
 精校后的中文翻译：
 """
-    return prompt
 
 
-def refine_translation(chinese_text, english_text):
-    """
-    调用Ollama API进行翻译精校。
-    """
-    prompt = create_ollama_prompt(chinese_text, english_text)
-
+def refine_translation(
+    session: requests.Session,
+    api_url: str,
+    model: str,
+    chinese_text: str,
+    english_text: str,
+    timeout: int,
+) -> str:
     payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
+        "model": model,
+        "prompt": create_ollama_prompt(chinese_text, english_text),
         "stream": False,
-        "options": {
-            "temperature": 0.1,
-        },
+        "options": {"temperature": 0.1},
     }
 
-    try:
-        response = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
-        response.raise_for_status()  # 检查HTTP错误
-
-        result = response.json()
-        refined_text = result.get("response", "").strip()
-        return refined_text
-
-    except requests.exceptions.RequestException as e:
-        print(f"Ollama API调用失败: {e}")
-        # **【测试/错误处理差异】** # 测试模式下，为了验证流程，可以返回一个特殊标记；实际模式下，最好返回原文。
-        if IS_TEST_MODE:
-            return f"[TEST_ERROR] {chinese_text}"
-        else:
-            return chinese_text  # 实际处理时，失败了就保留原文，避免丢失数据
+    response = session.post(api_url, json=payload, timeout=timeout)
+    response.raise_for_status()
+    result = response.json()
+    return result.get("response", "").strip() or chinese_text
 
 
-def process_localization_file(is_test_mode):
-    """
-    主处理函数：根据模式选择数据源，调用Ollama，并保存结果。
-    """
-    if is_test_mode:
-        print("--- 运行模式：测试模式 ---")
-        # 从硬编码字符串加载数据
-        root = ET.fromstring(TEST_XML_CONTENT)
-        input_name = "硬编码测试数据"
-        output_name = "test_output.xml"
-    else:
-        print("--- 运行模式：实际文件模式 ---")
-        input_name = XML_FILE_PATH
-        output_name = OUTPUT_FILE_PATH
+def process_localization_root(
+    root: ET.Element,
+    session: requests.Session,
+    api_url: str,
+    model: str,
+    timeout: int,
+) -> tuple[int, int]:
+    processed_rows = 0
+    skipped_rows = 0
 
-        try:
-            # 从实际文件加载数据
-            tree = ET.parse(XML_FILE_PATH)
-            root = tree.getroot()
-        except FileNotFoundError:
-            print(f"错误：文件未找到：{XML_FILE_PATH}")
-            return
-        except ET.ParseError as e:
-            print(f"错误：XML解析失败：{e}")
-            return
-
-    print(f"开始处理 {len(root)} 行数据 (数据源: {input_name})...")
-
-    # 遍历每一个 <Row> 元素
-    for i, row in enumerate(root.findall("Row")):
+    for index, row in enumerate(root.findall("Row"), start=1):
         cells = row.findall("Cell")
-
         if len(cells) < 3:
+            skipped_rows += 1
             continue
 
-        # 提取第三个单元格的内容
-        combined_text = cells[2].text
-        if not combined_text or "\n" not in combined_text:
-            print(f"警告：第 {i + 1} 行跳过格式不正确的行。")
+        combined_text = cells[2].text or ""
+        parts = split_bilingual_text(combined_text)
+        if not parts:
+            print(f"警告：第 {index} 行跳过，未识别到双语分隔符。")
+            skipped_rows += 1
             continue
 
-        # 使用 \n 分割，获取中文翻译和英文原文
-        parts = combined_text.split("\n", 1)
-        original_chinese = parts[0].strip()
-        original_english = parts[1].strip()
-
-        print(f"\n--- 正在处理第 {i + 1} 行 ---")
+        original_chinese, original_english = parts
+        print(f"\n--- 正在处理第 {index} 行 ---")
         print(f"英文: {original_english}")
         print(f"原中文: {original_chinese}")
 
-        # 调用Ollama进行精校
-        refined_chinese = refine_translation(original_chinese, original_english)
+        try:
+            refined_chinese = refine_translation(
+                session,
+                api_url,
+                model,
+                original_chinese,
+                original_english,
+                timeout,
+            )
+        except requests.exceptions.RequestException as exc:
+            print(f"Ollama API调用失败，保留原文: {exc}")
+            refined_chinese = original_chinese
 
+        cells[2].text = f"{refined_chinese}\\n{original_english}"
         print(f"精校后中文: {refined_chinese}")
+        processed_rows += 1
 
-        # 更新第三个单元格的内容 (保持格式：中文\n英文)
-        new_combined_text = f"{refined_chinese}\n{original_english}"
-        cells[2].text = new_combined_text
+    return processed_rows, skipped_rows
 
-    # 将修改后的数据保存到文件
-    if is_test_mode:
-        # 测试模式下，创建一个新的ElementTree来保存结果
-        new_tree = ET.ElementTree(root)
-        new_tree.write(output_name, encoding="utf-8", xml_declaration=True)
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="使用 Ollama 精校双语字幕 XML")
+    parser.add_argument("--input", type=Path, help="输入 XML 文件路径")
+    parser.add_argument("--output", type=Path, help="输出 XML 文件路径")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Ollama 模型名")
+    parser.add_argument("--api-url", default=OLLAMA_API_URL, help="Ollama API 地址")
+    parser.add_argument("--timeout", type=int, default=60, help="请求超时时间（秒）")
+    parser.add_argument(
+        "--test-mode",
+        action="store_true",
+        help="使用内置测试数据，不读取实际文件",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+
+    if args.test_mode:
+        root = ET.fromstring(TEST_XML_CONTENT)
+        output_path = args.output or Path("test_output.xml")
+        input_label = "硬编码测试数据"
     else:
-        # 实际文件模式下，使用原始的 tree 对象（如果成功解析的话）
-        # 注意：这里需要确保 tree 变量在非测试模式下是存在的
-        # 简单的做法是重新构造 tree
-        tree = ET.ElementTree(root)
-        tree.write(output_name, encoding="utf-8", xml_declaration=True)
+        if not args.input:
+            print("错误：实际模式下必须提供 --input。")
+            return 1
+        if not args.input.exists():
+            print(f"错误：输入文件不存在: {args.input}")
+            return 1
+
+        try:
+            root = ET.parse(args.input).getroot()
+        except ET.ParseError as exc:
+            print(f"错误：XML解析失败: {exc}")
+            return 1
+
+        output_path = args.output or args.input.with_name(
+            f"{args.input.stem}_refined{args.input.suffix}"
+        )
+        input_label = str(args.input)
+
+    print(f"开始处理 {len(root)} 行数据 (数据源: {input_label})...")
+
+    with requests.Session() as session:
+        processed_rows, skipped_rows = process_localization_root(
+            root, session, args.api_url, args.model, args.timeout
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ET.ElementTree(root).write(output_path, encoding="utf-8", xml_declaration=True)
 
     print("\n--- 任务完成 ---")
-    print(f"结果已保存至：{output_name}")
+    print(f"已处理: {processed_rows} 行，跳过: {skipped_rows} 行")
+    print(f"结果已保存至：{output_path}")
+    return 0
 
 
-# --- 主程序入口 ---
 if __name__ == "__main__":
-    # **在你运行代码时，手动修改顶部的 `IS_TEST_MODE` 变量即可切换模式。**
-
-    # 运行实际文件模式时，请确保 `XML_FILE_PATH` 文件存在。
-    # 如果你使用我之前创建的临时文件，可以在运行前手动创建它：
-    if not os.path.exists(XML_FILE_PATH) and not IS_TEST_MODE:
-        print(f"\n注意：{XML_FILE_PATH} 不存在，已自动创建示例文件。")
-        temp_xml_content_full = """
-<LocalizationData>
-<Row><Cell>achy_alchymist_a_je_to_a__n6s0</Cell><Cell>That's that! That was hard work!</Cell><Cell>就这样了！刚才真是场硬仗！ \n That's that! That was hard work!</Cell></Row>
-<Row><Cell>achy_alchymist_ale_jestli_XdGm</Cell><Cell>But if I ever run into that youngster again…</Cell><Cell>但如果再让我碰到那个年轻人… \n But if I ever run into that youngster again…</Cell></Row>
-<Row><Cell>achy_alchymist_aspon_zije_UWNH</Cell><Cell>At least we're alive… I reckon that'll do for today.</Cell><Cell>至少我们还活着…我想今天就这样吧。 \n At least we're alive… I reckon that'll do for today.</Cell></Row>
-</LocalizationData>
-"""
-        with open(XML_FILE_PATH, "w", encoding="utf-8") as f:
-            f.write(temp_xml_content_full)
-
-    process_localization_file(IS_TEST_MODE)
+    raise SystemExit(main())
