@@ -53,6 +53,13 @@ python 天国拯救2_双语_全自动.py --keep-temp
 
 ## AI 精校脚本
 
+支持两种 API 协议：
+
+- **Ollama**（默认）：本地部署，无需 API Key
+- **OpenAI 兼容**：DeepSeek、OpenAI 等云端模型
+
+### Ollama（本地）
+
 先启动 Ollama，并确保模型可用，例如：
 
 ```bash
@@ -71,9 +78,27 @@ python AI精校.py --input game_localization.xml
 ```bash
 python AI精校.py --input game_localization.xml --output game_localization_refined.xml
 python AI精校.py --input game_localization.xml --model qwen3:latest
+python AI精校.py --input game_localization.xml --api-url http://localhost:11434/api/generate
+python AI精校.py --input game_localization.xml --timeout 120
 ```
 
-测试模式：
+### OpenAI 兼容接口（DeepSeek 等）
+
+```bash
+# DeepSeek（默认 base URL）
+python AI精校.py --input game_localization.xml --provider openai --api-key sk-xxxx
+
+# 自定义 API 地址
+python AI精校.py --input game_localization.xml --provider openai \
+  --api-url https://api.openai.com/v1/chat/completions \
+  --model gpt-4o --api-key sk-xxxx
+
+# 使用环境变量
+export OPENAI_API_KEY=sk-xxxx
+python AI精校.py --input game_localization.xml --provider openai
+```
+
+### 测试模式
 
 ```bash
 python AI精校.py --test-mode
@@ -108,4 +133,15 @@ python AI精校.py --test-mode
 
 ```bash
 python -m unittest discover -s tests -v
+```
+
+## 代码结构
+
+```text
+.
+├── localize_core.py            # 共享核心库：PAK 解压/打包、XML 处理、双语合并
+├── 天国拯救2_双语_全自动.py      # 主处理脚本：编排完整的自动化流水线
+├── AI精校.py                    # 辅助脚本：通过 Ollama 精校双语字幕
+└── tests/
+    └── test_localize_core.py    # 单元测试
 ```
