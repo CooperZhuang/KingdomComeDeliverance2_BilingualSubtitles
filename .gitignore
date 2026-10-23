@@ -184,3 +184,22 @@ $RECYCLE.BIN/
 # Temporary files
 *.tmp
 *.temp
+
+# ---------------------------------------------------------------------------
+# 游戏原始数据与生成产物：受版权约束，任何情况下都不要提交
+# ---------------------------------------------------------------------------
+*.pak
+*.paz
+text_ui_dialog.xml
+text__*.xml
+Localization/
+中文配音输出/
+中文配音ogg/
+英文原始配音/
+*.wav
+*.ogg
+*.flac
+tts_generation.log
+voiceover.log
+stop_flag.txt
+logs/

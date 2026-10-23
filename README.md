@@ -142,6 +142,20 @@ python -m unittest discover -s tests -v
 ├── localize_core.py            # 共享核心库：PAK 解压/打包、XML 处理、双语合并
 ├── 天国拯救2_双语_全自动.py      # 主处理脚本：编排完整的自动化流水线
 ├── AI精校.py                    # 辅助脚本：通过 Ollama 精校双语字幕
+├── voiceover/                  # AI 中文配音：对话 XML → 本地 TTS 批量合成 → ogg
+│   ├── voiceover_processor.py   # 主流程：并发调用 TTS、多实例轮询、优雅停止
+│   ├── wav2ogg.py               # ffmpeg 批量 wav → ogg
+│   └── stop_processor.py        # 写停止标记让主流程退出
+├── kcd1/                       # 前作《天国：拯救 1》的本地化脚本（逐文件 XML）
+│   ├── 天国拯救_双语字幕.py
+│   └── 天国拯救_文本修正.py
 └── tests/
     └── test_localize_core.py    # 单元测试
 ```
+
+## 附加工具：AI 中文配音 与 KCD1 脚本
+
+- [`voiceover/`](voiceover/README.md)：字幕解决「看」，这条流水线解决「听」——把 `text_ui_dialog.xml` 逐条送本地 Gradio TTS 服务合成中文语音再转 ogg。含多 TTS 实例轮询、并发控制、优雅停止，几万条对话可以跑通。
+- [`kcd1/`](kcd1/README.md)：前作 KCD1 的文本是按文件拆开的 `text_ui_*.xml`，结构不同，因此单独一套脚本（双语生成 / 文本修正）。
+
+> 两个目录都**只放代码**：游戏原文 XML、生成的音频一律不进仓库（`.gitignore` 已拦截）。
